@@ -7,10 +7,21 @@ export default class Server implements Party.Server {
 
   poll: Poll | undefined;
 
+  async onStart() {
+    this.poll = await this.room.storage.get<Poll>("poll");
+  }
+
+  async savePoll() {
+    if (this.poll) {
+      await this.room.storage.put<Poll>("poll", this.poll);
+    }
+  }
+
   async onRequest(req: Party.Request) {
     if (req.method === "POST") {
       const poll = (await req.json()) as Poll;
       this.poll = { ...poll, votes: poll.options.map(() => 0) };
+      this.savePoll();
     }
 
     if (this.poll) {
@@ -21,6 +32,17 @@ export default class Server implements Party.Server {
     }
 
     return new Response("Not found", { status: 404 });
+  }
+
+  async onMessage(message: string) {
+    if (!this.poll) return;
+
+    const event = JSON.parse(message);
+    if (event.type === "vote") {
+      this.poll.votes![event.option] += 1;
+      this.room.broadcast(JSON.stringify(this.poll));
+      this.savePoll();
+    }
   }
 }
 
